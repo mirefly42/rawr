@@ -88,6 +88,7 @@ RawrDynarrResult rawrDynarrResizeExact(
 );
 
 RawrDynarrResult rawrDynarrExtend(RawrDynarrGeneralPointer gp, size_t n);
+void rawrDynarrContract(RawrDynarrGeneralPointer gp, size_t n);
 size_t rawrDynarrLastIndex(RawrDynarrHeader header);
 
 /* Dummy function for type checking in macros */
@@ -209,6 +210,11 @@ RawrDynarrResult rawrDynarrResizeExact(
 
 RawrDynarrResult rawrDynarrExtend(RawrDynarrGeneralPointer gp, size_t n) {
     return rawrDynarrResize(gp, (**gp.header_pp).length + n);
+}
+
+void rawrDynarrContract(RawrDynarrGeneralPointer gp, size_t n) {
+    assert(n <= (*gp.header_pp)->length);
+    (*gp.header_pp)->length -= n;
 }
 
 size_t rawrDynarrLastIndex(RawrDynarrHeader header) {
