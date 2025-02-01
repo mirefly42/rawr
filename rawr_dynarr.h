@@ -118,7 +118,6 @@ static inline int rawrDynarrTypecheckDummy(RawrDynarrHeader *header_p) {
 #include <stdlib.h>
 
 RawrDynarrResult rawrDynarrCreate(RawrDynarrGeneralPointer gp) {
-    *gp.header_pp = NULL;
     return rawrDynarrCreateWithCapacity(gp, 0);
 }
 
