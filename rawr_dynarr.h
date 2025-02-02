@@ -110,8 +110,6 @@ static inline int rawrDynarrTypecheckDummy(RawrDynarrHeader *header_p) {
     })
 
 #define RAWR_DYNARR_LAST_INDEX(dynarr_p) rawrDynarrLastIndex((dynarr_p)->h)
-#define RAWR_DYNARR_LAST(dynarr_p) \
-    ((dynarr_p)->d[RAWR_DYNARR_LAST_INDEX(dynarr_p)])
 
 #ifdef RAWR_DYNARR_IMPLEMENTATION
 
