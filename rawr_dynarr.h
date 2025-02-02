@@ -1,4 +1,4 @@
-/* rawr_dynarr.h - v0.0.1 */
+/* rawr_dynarr.h - v0.1.0 */
 
 /*
  * BSD 1-Clause License
