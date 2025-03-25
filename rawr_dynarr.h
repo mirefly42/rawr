@@ -31,9 +31,29 @@
 
 #include <stddef.h>
 
+typedef struct RawrDynarrAllocator {
+    void *user_data;
+    void *(*realloc)(
+        void *ptr,
+        size_t new_size,
+        size_t old_size,
+        void *user_data
+    );
+} RawrDynarrAllocator;
+
+extern const RawrDynarrAllocator rawr_dynarr_default_allocator;
+
+void *rawrDynarrAllocatorRealloc(
+    RawrDynarrAllocator allocator,
+    void *ptr,
+    size_t new_size,
+    size_t old_size
+);
+
 typedef struct RawrDynarrHeader {
     size_t length;
     size_t capacity;
+    RawrDynarrAllocator allocator;
 } RawrDynarrHeader;
 
 typedef struct RawrDynarrGeneralPointer {
@@ -53,23 +73,14 @@ typedef enum {
     RAWR_DYNARR_RESULT_FAIL_ALLOC,
 } RawrDynarrResult;
 
-RawrDynarrResult rawrDynarrCreate(RawrDynarrGeneralPointer gp);
-
-RawrDynarrResult rawrDynarrCreateWithCapacity(
+RawrDynarrResult rawrDynarrCreate(
     RawrDynarrGeneralPointer gp,
-    size_t capacity
+    size_t length,
+    size_t capacity,
+    RawrDynarrAllocator allocator
 );
 
-RawrDynarrResult rawrDynarrCreateWithLength(
-    RawrDynarrGeneralPointer gp,
-    size_t length
-);
-
-RawrDynarrResult rawrDynarrCreateWithLengthExact(
-    RawrDynarrGeneralPointer gp,
-    size_t length
-);
-
+RawrDynarrResult rawrDynarrCreateDefault(RawrDynarrGeneralPointer gp);
 void rawrDynarrDestroy(RawrDynarrGeneralPointer gp);
 
 RawrDynarrResult rawrDynarrCapacitySet(
@@ -90,6 +101,7 @@ RawrDynarrResult rawrDynarrResizeExact(
 RawrDynarrResult rawrDynarrExtend(RawrDynarrGeneralPointer gp, size_t n);
 void rawrDynarrContract(RawrDynarrGeneralPointer gp, size_t n);
 size_t rawrDynarrLastIndex(RawrDynarrHeader header);
+size_t rawrDynarrAllocationSize(RawrDynarrGeneralPointer gp);
 
 /* Dummy function for type checking in macros */
 static inline int rawrDynarrTypecheckDummy(RawrDynarrHeader *header_p) {
@@ -116,36 +128,76 @@ static inline int rawrDynarrTypecheckDummy(RawrDynarrHeader *header_p) {
 #include <assert.h>
 #include <stdlib.h>
 
-RawrDynarrResult rawrDynarrCreate(RawrDynarrGeneralPointer gp) {
-    return rawrDynarrCreateWithCapacity(gp, 0);
+void *rawrDynarrAllocatorRealloc(
+    RawrDynarrAllocator allocator,
+    void *ptr,
+    size_t new_size,
+    size_t old_size
+) {
+    return allocator.realloc(ptr, new_size, old_size, allocator.user_data);
 }
 
-RawrDynarrResult rawrDynarrCreateWithCapacity(
-    RawrDynarrGeneralPointer gp,
-    size_t capacity
+static void *rawrDynarrDefaultAllocatorRealloc(
+    void *ptr,
+    size_t new_size,
+    size_t old_size,
+    void *user_data
 ) {
-    *gp.header_pp = NULL;
-    return rawrDynarrCapacitySet(gp, capacity);
+    (void)old_size;
+    (void)user_data;
+
+    if (new_size == 0) {
+        free(ptr);
+        return NULL;
+    } else {
+        return realloc(ptr, new_size);
+    }
 }
 
-RawrDynarrResult rawrDynarrCreateWithLength(
+const RawrDynarrAllocator rawr_dynarr_default_allocator = {
+    NULL,
+    rawrDynarrDefaultAllocatorRealloc,
+};
+
+RawrDynarrResult rawrDynarrCreate(
     RawrDynarrGeneralPointer gp,
-    size_t length
+    size_t length,
+    size_t capacity,
+    RawrDynarrAllocator allocator
 ) {
-    *gp.header_pp = NULL;
-    return rawrDynarrResize(gp, length);
+    assert(length <= capacity);
+
+    (*gp.header_pp) = rawrDynarrAllocatorRealloc(
+        allocator,
+        NULL,
+        gp.padded_header_size + capacity * gp.element_size,
+        0
+    );
+
+    if (*gp.header_pp == NULL) {
+        return RAWR_DYNARR_RESULT_FAIL_ALLOC;
+    }
+
+    (**gp.header_pp) = (RawrDynarrHeader){
+        .length = length,
+        .capacity = capacity,
+        .allocator = allocator,
+    };
+
+    return RAWR_DYNARR_RESULT_SUCCESS;
 }
 
-RawrDynarrResult rawrDynarrCreateWithLengthExact(
-    RawrDynarrGeneralPointer gp,
-    size_t length
-) {
-    *gp.header_pp = NULL;
-    return rawrDynarrResizeExact(gp, length);
+RawrDynarrResult rawrDynarrCreateDefault(RawrDynarrGeneralPointer gp) {
+    return rawrDynarrCreate(gp, 0, 0, rawr_dynarr_default_allocator);
 }
 
 void rawrDynarrDestroy(RawrDynarrGeneralPointer gp) {
-    free(*gp.header_pp);
+    rawrDynarrAllocatorRealloc(
+        (**gp.header_pp).allocator,
+        *gp.header_pp,
+        0,
+        rawrDynarrAllocationSize(gp)
+    );
     *gp.header_pp = NULL;
 }
 
@@ -153,18 +205,17 @@ RawrDynarrResult rawrDynarrCapacitySet(
     RawrDynarrGeneralPointer gp,
     size_t new_capacity
 ) {
-    RawrDynarrHeader *new_header_p = realloc(
+    RawrDynarrHeader *new_header_p = rawrDynarrAllocatorRealloc(
+        (**gp.header_pp).allocator,
         *gp.header_pp,
-        gp.padded_header_size + new_capacity * gp.element_size
+        gp.padded_header_size + new_capacity * gp.element_size,
+        rawrDynarrAllocationSize(gp)
     );
 
     if (!new_header_p) {
         return RAWR_DYNARR_RESULT_FAIL_ALLOC;
     }
 
-    if (*gp.header_pp == NULL) {
-        new_header_p->length = 0;
-    }
     *gp.header_pp = new_header_p;
 
     if (new_header_p->length > new_capacity) {
@@ -179,7 +230,7 @@ RawrDynarrResult rawrDynarrResize(
     RawrDynarrGeneralPointer gp,
     size_t new_length
 ) {
-    if (*gp.header_pp && new_length <= (**gp.header_pp).capacity) {
+    if (new_length <= (**gp.header_pp).capacity) {
         (**gp.header_pp).length = new_length;
         return RAWR_DYNARR_RESULT_SUCCESS;
     }
@@ -218,6 +269,10 @@ void rawrDynarrContract(RawrDynarrGeneralPointer gp, size_t n) {
 size_t rawrDynarrLastIndex(RawrDynarrHeader header) {
     assert(header.length);
     return header.length - 1;
+}
+
+size_t rawrDynarrAllocationSize(RawrDynarrGeneralPointer gp) {
+    return gp.padded_header_size + (**gp.header_pp).capacity * gp.element_size;
 }
 
 #endif /* RAWR_DYNARR_IMPLEMENTATION */
