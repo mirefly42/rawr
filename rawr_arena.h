@@ -38,7 +38,7 @@ typedef struct RawrArena {
     size_t capacity;
 } RawrArena;
 
-RawrArena *rawrArenaCreate(size_t capacity);
+void rawrArenaInit(RawrArena *arena, size_t size);
 void *rawrArenaAlloc(RawrArena *arena, size_t size, size_t alignment);
 
 /* NOTE: alignment expected to be the same that you provided on alloc */
@@ -51,13 +51,11 @@ void *rawrArenaRealloc(
 );
 
 void rawrArenaReset(RawrArena *arena);
-void rawrArenaDestroy(RawrArena *arena);
 
 #ifdef RAWR_ARENA_IMPLEMENTATION
 
 #include <assert.h>
 #include <stdint.h>
-#include <stdlib.h>
 #include <string.h>
 
 static void *rawrArenaData(RawrArena *arena) {
@@ -72,18 +70,13 @@ static size_t rawrArenaCalculatePadding(void *ptr, size_t alignment) {
     return (alignment - (uintptr_t)ptr % alignment) % alignment;
 }
 
-RawrArena *rawrArenaCreate(size_t capacity) {
-    RawrArena *arena = malloc(sizeof(*arena) + capacity);
-    if (!arena) {
-        return NULL;
-    }
+void rawrArenaInit(RawrArena *arena, size_t size) {
+    assert(sizeof(*arena) <= size);
 
     *arena = (RawrArena){
         .used = 0,
-        .capacity = capacity,
+        .capacity = size - sizeof(*arena),
     };
-
-    return arena;
 }
 
 void *rawrArenaAlloc(RawrArena *arena, size_t size, size_t alignment) {
@@ -131,10 +124,6 @@ void *rawrArenaRealloc(
 
 void rawrArenaReset(RawrArena *arena) {
     arena->used = 0;
-}
-
-void rawrArenaDestroy(RawrArena *arena) {
-    free(arena);
 }
 
 #endif /* RAWR_ARENA_IMPLEMENTATION */
