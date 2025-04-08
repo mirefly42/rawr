@@ -1,7 +1,7 @@
 .POSIX:
 
 PREFIX = /usr/local
-HDR = rawr_arena.h rawr_dynarr.h
+HDR = rawr_arena.h rawr_dynarr.h rawr_zglue.h
 
 all: ${HDR}
 
